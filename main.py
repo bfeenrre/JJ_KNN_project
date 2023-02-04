@@ -65,10 +65,10 @@ def predict():
     dates = df_all.index
     print(dates)
 
-    list_items = df_all.columns
+    list_items = df_all.columns[2:]
     num_items = list_items.shape[0]
     print("Predicting today's sales for the following items...")
-    print(list_items)
+    print(list_items[2:])
 
     # something broken in here - I need to sleep though
 
@@ -80,27 +80,19 @@ def predict():
         
         weekday_arr = weekdays(data_vec[:, 0]).reshape(n, 1)
         month_arr = months(data_vec[:, 0]).reshape(n, 1)
-        quantities = np.asarray(data_vec[:, 1]).reshape(n, 1)
+
+        quantities_obj = np.array(data_vec[:, 1])
+        quantities = np.round(quantities_obj.astype(np.float32))
 
         date_data = np.append(month_arr, weekday_arr, axis = 1)
-        learnable_data = np.append(date_data, quantities, axis = 1)
-        if item == 'Sandwich, Caprese':
-            print(learnable_data)
-            print(quantities.dtype)
 
-        X = learnable_data[:, 0:2]
-        y = learnable_data[:, 2]
-        if item == 'Sandwich, Caprese':
-            print(X)
-            print(y)
+        X = date_data
+        y = quantities
 
-        #plt.scatter(X[:, 0], X[:, 1], c = y, cmap = 'viridis')
-        #plt.colorbar()
-        plt.show()
-
-        #model = KNN(k = 10)
-        #model.fit(X, y)
-        #pred[np.where(list_items == item)] = model.predict(today())
+        model = KNeighborsClassifier(n_neighbors=15)
+        model.fit(X, y)
+        today_ = today().reshape(1, -1)
+        pred[np.where(list_items == item)] = model.predict(today_)
     
     print(pred)
 
