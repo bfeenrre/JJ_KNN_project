@@ -14,8 +14,8 @@ os.chdir(Path(__file__).parent.resolve())
 
 # our code
 from utils import handle, main, weekdays, months, today
-## from knn import KNN
 
+# cleans and saves daily breakdown of specific item sales to cleaned_day_item_array.csv
 @handle("clean")
 def clean():
     # load raw data
@@ -56,45 +56,222 @@ def clean():
     fname = Path("..", "data", "cleaned_day_item_array.csv")
     cleaned_df.to_csv(fname)
 
-@handle("predict")
-def predict():
+    assert(num_items != None)
+
+# helper; loads data into global vars from cleaned_day_item_array.csv
+def load_data():
     fname = Path("..", "data", "cleaned_day_item_array.csv")
     data_all = pd.read_csv(fname)
     df_all = pd.DataFrame(data_all)
+    return df_all
 
-    dates = df_all.index
-    print(dates)
-
-    list_items = df_all.columns[2:]
-    num_items = list_items.shape[0]
-    print("Predicting today's sales for the following items...")
-    print(list_items[2:])
-
-    # something broken in here - I need to sleep though
-
-    pred = np.zeros(num_items)
-    for item in list_items:
+# helper; slices df_all and returns learnable/clean data for item param
+# df_all must be initialized in order to call this
+def get_cleaned_data(item, df_all):
         data = df_all.loc[:, ['Date', item]]
         n = data.shape[0]
         data_vec = np.array(data)
         
         weekday_arr = weekdays(data_vec[:, 0]).reshape(n, 1)
+        weekday_arr = weekday_arr * 2
         month_arr = months(data_vec[:, 0]).reshape(n, 1)
+        month_arr = month_arr * 3
 
         quantities_obj = np.array(data_vec[:, 1])
-        quantities = np.round(quantities_obj.astype(np.float32))
+        quantities = np.round_(quantities_obj.astype(np.float32)).reshape(n, 1)
 
         date_data = np.append(month_arr, weekday_arr, axis = 1)
+        
+        ret = np.append(date_data, quantities, axis = 1)
+        return ret
 
-        X = date_data
-        y = quantities
+# helper that runs cross validation (with specified number of folds) on a KNN model with each k in ks, returning
+#    an array cv_accs, where cv_accs[i] is the mean cross-validation error across all folds for ks[i]
+def test(X, y, ks, folds):
 
-        model = KNeighborsClassifier(n_neighbors=15)
-        model.fit(X, y)
-        today_ = today().reshape(1, -1)
-        pred[np.where(list_items == item)] = model.predict(today_)
+    n = int(X.shape[0])
+    num_folds = folds
+
+    # this assertion ensures that your validation sets will always have at least one item in them
+    assert(num_folds <= n)
+
+    fold_size = int(n / num_folds)
+    leftovers = int(n % num_folds)
+
+    cv_accs = np.zeros(len(ks))
+    for k in ks:
+        # clear errors for this iteration
+        errors = np.empty(num_folds, dtype=float)
+        for i in range(num_folds):
+            # clear mask
+            mask = np.zeros(n, dtype=bool)
+
+            # set mask for this iteration
+            i_0 = (i * fold_size)
+            i_1 = ((i + 1) * fold_size)
+            # in case n is not evenly divisible by the number of fold we are doing,
+            #     append the leftover data to the end of the last validation set
+            if i == num_folds - 1:
+                i_1 = i_1 + leftovers
+            mask[i_0:i_1] = True
+
+            # get X_validate and X_train from X using mask
+            X_validate = X[mask, :]
+            y_validate = y[mask]
+            X_train = X[~mask, :]
+            y_train = y[~mask]
+
+            # train and validate on this fold, and store validation error in errors
+            model = KNeighborsClassifier(n_neighbors= k)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_validate)
+            err_abs = np.abs(y_pred - y_validate)
+            err_rel_approx = err_abs / (y_validate + 1)
+            
+            err = np.mean(err_rel_approx)
+            errors[i] = err
+        
+        # store average error for k across the 10 folds
+        cv_accs[ks.index(k)] = np.mean(errors)
+    return cv_accs
+
+@handle("predict")
+def predict():
+    df_all = load_data()
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    print("Predicting today's sales for the following items...")
+    print(list(list_items))
+    num_items = list_items.shape[0]
+
+    pred = np.zeros(num_items)
+
+    ks = range(20, 31, 1)
+    ensemble_size = len(ks)
+
+    for item in list_items:
+
+        data = get_cleaned_data(item, df_all)
+
+        X = data[:, 0:2]
+        y = data[:, 2]
+        
+        item_preds = np.zeros(ensemble_size)
+
+        i = 0
+        for k in ks:
+            model = KNeighborsClassifier(n_neighbors=k)
+            model.fit(X, y)
+            today_ = today().reshape(1, -1)
+            item_preds[i] = model.predict(today_)
+            i = i + 1
+            
+        pred[np.where(list_items == item)] = np.round(np.mean(item_preds))
     
     print(pred)
+
+@handle('test_granular')
+def test_granular():
+    df_all = load_data()
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    print("Running granular cross-validation for the following items...")
+    print(list(list_items))
+
+    for item in list_items:
+
+        data = get_cleaned_data(item, df_all)
+
+        X = data[:, 0:2]
+        y = data[:, 2]
+
+        ks = range(1, 101, 1)
+        folds = 20
+        cv_accs = test(X, y, ks, folds)
+
+        plt.clf()
+        plt.plot(ks, cv_accs, label = '_err_cv')
+        plt.xlabel('k')
+        plt.ylabel('accuracy')
+        plt.legend(loc = 'upper right')
+        fname = Path("..", "figs", "granular", item.lower().replace(' ', '').replace(',', '_') + "_cv_accs.pdf")
+        plt.savefig(fname)
+        print(f"figure saved as {fname}")
+
+@handle('test_aggregate')
+def test_aggregate():
+    df_all = load_data()
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    ks = range(1, 50, 1)
+    folds = 10
+
+    print("Running aggregate cross-validation for the following items...")
+    print(list(list_items))
+    print("Testing k's in: ")
+    print(ks)
+    print("Folds: ")
+    print(folds)
+
+    itemized_errors = np.zeros((num_items, len(ks)))
+
+    for item in list_items:
+
+        data = get_cleaned_data(item, df_all)
+
+        X = data[:, 0:2]
+        y = data[:, 2]
+
+        itemized_errors[np.where(list_items == item)] = test(X, y, ks, folds, item)
+
+    aggregate_cv_accs = np.mean(itemized_errors, axis = 0)
+    
+    plt.plot(ks, aggregate_cv_accs, label = 'item')
+    plt.xlabel('k')
+    plt.ylabel('accuracy')
+    plt.legend(loc = 'upper right')
+    fname = Path("..", "figs", "aggregate_cv_accs.pdf")
+    plt.savefig(fname)
+    print(f"figure saved as {fname}")
+
+@handle('granular_summary')
+def test_aggregate():
+    df_all = load_data()
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    ks = range(1, 50, 1)
+    folds = 10
+
+    print("Running aggregate cross-validation for the following items...")
+    print(list(list_items))
+    print("Testing k's in: ")
+    print(ks)
+    print("Folds: ")
+    print(folds)
+
+    for item in list_items:
+
+        data = get_cleaned_data(item, df_all)
+
+        X = data[:, 0:2]
+        y = data[:, 2]
+
+        ks = range(1, 101, 1)
+        folds = 20
+        cv_accs = test(X, y, ks, folds)
+        plt.plot(ks, cv_accs, label = item.lower().replace(' ', '').replace(',', '_'))
+    
+    plt.xlabel('k')
+    plt.ylabel('accuracy')
+    plt.legend(loc = 'upper right')
+    fname = Path("..", "figs", "summary_granular_cv_accs.pdf")
+    plt.savefig(fname)
+    print(f"figure saved as {fname}")
+
 
 if __name__ == "__main__":
     main()

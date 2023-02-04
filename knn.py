@@ -11,6 +11,7 @@ from utils import euclidean_dist_squared
 class KNN:
     X = None
     y = None
+    debug = False
 
     def __init__(self, k):
         self.k = k
@@ -27,6 +28,8 @@ class KNN:
         
         for x_hat in range(t):
             closest_neighbors = np.argsort(dists[:, x_hat])[:self.k]
+            if (self.debug):
+                print(closest_neighbors)
             headcount = np.bincount(self.y[closest_neighbors])
             pred[0, x_hat] = np.argmax(headcount)
 
