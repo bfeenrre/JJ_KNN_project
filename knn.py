@@ -4,14 +4,12 @@ Implementation of k-nearest neighbours classifier
 
 import numpy as np
 
-import utils
 from utils import euclidean_dist_squared
 
 
 class KNN:
     X = None
     y = None
-    debug = False
 
     def __init__(self, k):
         self.k = k

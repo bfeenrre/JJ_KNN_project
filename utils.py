@@ -64,7 +64,7 @@ def weekdays(df):
 
 def today():
     # generalize this later using datetime
-    return np.array([2, 4]).reshape(1, 2)
+    return np.array([2, 2]).reshape(1, 2)
 
 
 ################################################################################

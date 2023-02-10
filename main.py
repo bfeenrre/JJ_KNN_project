@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from knn import KNN
+import time
+from data_custodian import DataCustodian
 
 # make sure we're working in the directory this file lives in,
 # for imports and for simplicity with relative paths
@@ -27,17 +29,76 @@ from utils import handle, main, weekdays, months, today
 
 #   - QUANTITATIVELY TEST AGAINST JJ'S GOOGLE SHEETS SYSTEM - TEST IF KNN IS REALLY AN IMPROVEMENT
 
-# cleans and saves daily breakdown of specific item sales to cleaned_day_item_array.csv
-@handle("clean")
-def clean():
-    # load raw data
-    dataset = pd.read_csv(r'C:\Users\bfeen\OneDrive\Desktop\coding_projects\JJ_ML_project\data\items-2022-03-03-2023-01-31.csv', low_memory=False)
+# DEFINITIONS
+class Status:
+    quit = 0 
+    timer = 0
+    model_mode = "knn"
+main_options = "options:\n    - '-q' does what you think it does\n    - '-t' timer on/off\n    - '-m' choose what type of model you want to use\n    - 'pred' predict sales for today\n    - coming soon...\n"
+mode_options = "options:\n    - 'knn' single knn model\n    - 'nknn' ensemble knn model\n    - 'r' return to main menu\n"
+
+# GLOBAL VARIABLE
+data_mng = DataCustodian()
+model = None
+
+@handle("run")
+def run():
+    # init
+    status = Status()
+
+    data_mng.load_and_clean_data()
     
-    # get columns that're being used for the model
-    df_raw = pd.DataFrame(dataset, columns = ['Date', 'Item', 'Qty'])
+    valid_commands = ["-o", "-q", "-t", "-m", "pred"]
     
-    # ignore "voided" item labels
-    df_non_void = df_raw[~df_raw['Item'].str.contains('void', case=False)]
+    print(main_options)
+    while(status.quit == False):
+        command = input().lower().replace(" ", "")
+        if command in valid_commands:
+            if command in valid_commands[0:4]:
+                status = update_status(status, command)
+            else:
+                if status.timer == 1:
+                    t_s = time.time()
+                run_func(command)
+                if status.timer == 1:
+                    t_e = time.time()
+                    print("run time: " + str(t_e - t_s))
+        else:
+             print("please enter a valid command [type '-o' for list of valid commands]\n")
+    print("see ya!")
+
+def update_status(status, command):
+    valid_modes = ["knn", "nknn"]
+    if (command == "-q"):
+        return 1
+    if (command == "-t"):
+        status.timer ^= status.timer
+    if (command == "-o"):
+        print("\n" + main_options)
+    if (command == "-m"):
+        print("\ncurrent model mode is... " + status.model_mode)
+        print(mode_options)
+        while(True):
+            mode_sel = input().lower().replace(" ", "")
+            if (mode_sel == "q"):
+                return status
+            if mode_sel in valid_modes:
+                status.model_mode = mode_sel
+                return status
+            else:
+                print("\ninvalid command...")
+                print(mode_options)
+    return status
+
+def run_func(function):
+    if function == "predict":
+        if model != None:
+            predict()
+        else:
+            print("Error: model == None, please train your model before predicting")
+    
+def clean_and_save(items):
+    df_non_void = data_mng.cleaned_data_df
 
     # set data-selection mask - currently only selecting two-rivers products
     get = ((df_non_void['Item'].str.contains('sandwich', case=False))
@@ -88,23 +149,23 @@ def plot_data():
 # helper; slices df_all and returns learnable/clean data for item param
 # df_all must be initialized in order to call this
 def get_preprocessed_data(item, df_all):
-        data = df_all.loc[:, ['Date', item]]
-        n = data.shape[0]
-        data_vec = np.array(data)
-        
-        weekday_arr = weekdays(data_vec[:, 0]).reshape(n, 1)/6
-        weekday_arr = weekday_arr * 3
-        month_arr = months(data_vec[:, 0]).reshape(n, 1)/12
-        month_arr = month_arr
+    data = df_all.loc[:, ['Date', item]]
+    n = data.shape[0]
+    data_vec = np.array(data)
+    
+    weekday_arr = weekdays(data_vec[:, 0]).reshape(n, 1)/6
+    weekday_arr = weekday_arr * 3
+    month_arr = months(data_vec[:, 0]).reshape(n, 1)/12
+    month_arr = month_arr
 
-        quantities_obj = np.array(data_vec[:, 1])
-        quantities = np.round_(quantities_obj.astype(np.float32)).reshape(n, 1)
+    quantities_obj = np.array(data_vec[:, 1])
+    quantities = np.round_(quantities_obj.astype(np.float32)).reshape(n, 1)
 
-        date_data = np.append(month_arr, weekday_arr, axis = 1)
-        
-        ret = np.append(date_data, quantities, axis = 1)
-        ret = ret.astype(np.int64)
-        return ret
+    date_data = np.append(month_arr, weekday_arr, axis = 1)
+    
+    ret = np.append(date_data, quantities, axis = 1)
+    ret = ret.astype(np.int64)
+    return ret
 
 # helper that runs cross validation (with specified number of folds) on a KNN model with each k in ks, returning
 #    an array cv_accs, where cv_accs[i] is the mean cross-validation error across all folds for ks[i]
@@ -167,31 +228,30 @@ def predict():
     print(list(list_items))
     num_items = list_items.shape[0]
 
-    pred = np.zeros(num_items)
+    pred_tot = np.zeros(num_items)
 
-    ks = range(20, 31, 1)
-    ensemble_size = len(ks)
+    ensemble_size = 15
 
-    for item in list_items:
+    for j in range(ensemble_size):
+        pred = np.zeros(num_items)
 
-        data = get_preprocessed_data(item, df_all)
+        ks = np.round(find_ks()).astype(int)
 
-        X = data[:, 0:2]
-        y = np.round(data[:, 2])
-        
-        item_preds = np.zeros(ensemble_size)
+        for i in range(num_items):
 
-        i = 0
-        for k in ks:
-            model = KNN(k=k)
+            data = get_preprocessed_data(list_items[i], df_all)
+
+            X = data[:, 0:2]
+            y = np.round(data[:, 2])
+
+            model = KNN(k=ks[i])
             model.fit(X, y)
             today_ = today().reshape(1, -1)
-            item_preds[i] = model.predict(today_)
-            i = i + 1
-            
-        pred[np.where(list_items == item)] = np.round(np.mean(item_preds))
+                
+            pred[i] = model.predict(today_)
     
-    print(pred)
+        pred_tot += pred
+    print(np.round(pred_tot / ensemble_size))
 
 @handle('test_granular')
 def test_granular():
@@ -204,7 +264,8 @@ def test_granular():
 
     for item in list_items:
 
-        data = np.random.shuffle(get_preprocessed_data(item, df_all))
+        data = get_preprocessed_data(item, df_all)
+        np.random.shuffle(data)
 
         X = data[:, 0:2]
         y = data[:, 2]
@@ -241,7 +302,8 @@ def test_aggregate():
 
     for item in list_items:
 
-        data = np.random.shuffle(get_preprocessed_data(item, df_all))
+        data = get_preprocessed_data(item, df_all)
+        np.random.shuffle(data)
 
         X = data[:, 0:2]
         y = data[:, 2]
@@ -259,7 +321,7 @@ def test_aggregate():
     print(f"figure saved as {fname}")
 
 @handle('granular_summary')
-def test_aggregate():
+def granular_summary():
     df_all = load_data()
     list_items = df_all.columns[2:]
     num_items = list_items.shape[0]
@@ -276,7 +338,8 @@ def test_aggregate():
 
     for item in list_items:
 
-        data = np.random.shuffle(get_preprocessed_data(item, df_all))
+        data = get_preprocessed_data(item, df_all)
+        np.random.shuffle(data)
 
         X = data[:, 0:2]
         y = data[:, 2]
@@ -316,6 +379,80 @@ def test_jj():
 
         accs[j] = np.mean(np.abs((y[4:] - y_pred)/(y[4:] + 1)))
         j = j + 1
+
+    print("Accuracies: ")
+    print(accs)
+
+def run_k_test(df_all):
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    best_ks = np.zeros(num_items)
+
+    for i in range(num_items):
+
+        data = get_preprocessed_data(list_items[i], df_all)
+        np.random.shuffle(data)
+
+        X = data[:, 0:2]
+        y = data[:, 2]
+
+        ks = range(1, 20, 1)
+        folds = 25
+        cv_accs = test(X, y, ks, folds, 'abs')
+        best_ks[i]= ks[np.argmin(cv_accs)]
+    return best_ks
+        
+
+@handle('find_best_ks')
+def find_ks():
+    df_all = load_data()
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    num_tests = 5
+
+    #rint("Using cross-validation to find the best k for the following items...")
+    #print(list(list_items))
+
+    best_ks = np.zeros(num_items)
+
+    for j in range(num_tests):
+        best_ks += run_k_test(df_all)
+
+    return best_ks/num_tests
+
+@handle('test_best_knn')
+def test_best_knn():
+    df_all = load_data()
+    list_items = df_all.columns[2:]
+    num_items = list_items.shape[0]
+
+    print("Testing my model's accuracy for the following items: ")
+    print(list_items)
+
+    ks_by_item = find_ks()
+
+    accs = np.zeros(num_items)
+    for j in range(num_items):
+
+
+        data = get_preprocessed_data(list_items[j], df_all)
+        np.random.shuffle(data)
+        n = int(data.shape[0])
+
+        X_train = data[:, 0:2]
+        y_train = data[:, 2]
+        test_indx = np.random.randint(n, size = int(n/2))
+        test_data = data[test_indx]
+        X_test = test_data[:, 0:2]
+        y_test = test_data[:, 2]
+
+        model = KNeighborsClassifier(n_neighbors=int(ks_by_item[j]))
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+
+        accs[j] = np.mean(np.abs(((y_pred - y_test) + 1)/(y_pred + 1)))
 
     print("Accuracies: ")
     print(accs)
