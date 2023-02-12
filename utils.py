@@ -1,6 +1,5 @@
 import argparse
 import numpy as np
-import datetime
 
 
 def euclidean_dist_squared(X, Xtest):
@@ -36,42 +35,12 @@ def euclidean_dist_squared(X, Xtest):
 
     return X_norms_sq[:, np.newaxis] + Xtest_norms_sq[np.newaxis, :] - 2 * dots
 
-def date_to_month(str):
-    year, month, day = (int(x) for x in str.split('-'))
-    return int(month)
-  
-def months(arr):
-    n = arr.shape[0]
-    ret = np.zeros(n, dtype=int)
-    for i in range(n):
-        ret[i] = date_to_month(arr[i])
-    return ret
-
-def date_to_dayofweek(str):
-    if str == 'Date':
-        return str
-    year, month, day = (int(x) for x in str.split('-'))    
-    dt = datetime.date(year, month, day)
-    ans = dt.weekday()
-    return ans
-
-def weekdays(df):
-    n = df.shape[0]
-    ret = np.zeros(n, dtype=int)
-    for i in range(n):
-        ret[i] = int(date_to_dayofweek(df[i]))
-    return ret
-
-def today():
-    # generalize this later using datetime
-    return np.array([2, 2]).reshape(1, 2)
 
 
 ################################################################################
 # Helpers for setting up the command-line interface
 
 _funcs = {}
-
 
 def handle(number):
     def register(func):

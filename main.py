@@ -8,15 +8,15 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from knn import KNN
 import time
-from data_custodian import DataCustodian
+from data_manager import DataManager, update_clean_data
+from data_manager import food_items
 
 # make sure we're working in the directory this file lives in,
 # for imports and for simplicity with relative paths
 os.chdir(Path(__file__).parent.resolve())
 
 # our code
-from utils import handle, main, weekdays, months, today
-
+from utils import handle, main
 
 ## GOALS FOR THIS PROJECT FOR THE FUTURE
 #   - implement bagging with my ensembles to reduce variance of my data
@@ -29,33 +29,32 @@ from utils import handle, main, weekdays, months, today
 
 #   - QUANTITATIVELY TEST AGAINST JJ'S GOOGLE SHEETS SYSTEM - TEST IF KNN IS REALLY AN IMPROVEMENT
 
-# DEFINITIONS
+# status struct definition
 class Status:
     quit = 0 
     timer = 0
     model_mode = "knn"
-main_options = "options:\n    - '-q' does what you think it does\n    - '-t' timer on/off\n    - '-m' choose what type of model you want to use\n    - 'pred' predict sales for today\n    - coming soon...\n"
-mode_options = "options:\n    - 'knn' single knn model\n    - 'nknn' ensemble knn model\n    - 'r' return to main menu\n"
+    items = food_items
+    data_mng = DataManager()
+    model = None
 
-# GLOBAL VARIABLE
-data_mng = DataCustodian()
-model = None
+# menu constants
+valid_commands = ["-o", "-q", "-t", "-m", "update_clean_data"]
+main_options = "options:\n    - '-q' does what you think it does\n    - '-t' timer on/off\n    - '-m' choose what type of model you want to use\n    - 'update_clean_data' load raw data from csv, clean it, use it to calculate summary of daily sales by item with augmented date data, and store summary as new, usable csv\n    - coming soon..."
+mode_options = "options:\n    - 'knn' single knn model\n    - 'nknn' ensemble knn model\n    - 'r' return to main menu"
+
+# global status variable
+status = Status()
 
 @handle("run")
 def run():
     # init
-    status = Status()
-
-    data_mng.load_and_clean_data()
-    
-    valid_commands = ["-o", "-q", "-t", "-m", "pred"]
-    
     print(main_options)
     while(status.quit == False):
         command = input().lower().replace(" ", "")
         if command in valid_commands:
             if command in valid_commands[0:4]:
-                status = update_status(status, command)
+                update_status(command)
             else:
                 if status.timer == 1:
                     t_s = time.time()
@@ -63,88 +62,42 @@ def run():
                 if status.timer == 1:
                     t_e = time.time()
                     print("run time: " + str(t_e - t_s))
+            if (status.quit == False):
+                print("done! please enter another command...")
         else:
              print("please enter a valid command [type '-o' for list of valid commands]\n")
     print("see ya!")
 
-def update_status(status, command):
-    valid_modes = ["knn", "nknn"]
+def update_status(command):
     if (command == "-q"):
-        return 1
+        status.quit = True
     if (command == "-t"):
-        status.timer ^= status.timer
+        status.timer ^= 1
     if (command == "-o"):
         print("\n" + main_options)
     if (command == "-m"):
-        print("\ncurrent model mode is... " + status.model_mode)
+        valid_modes = ["knn", "nknn"]
+        print("current model mode is... " + status.model_mode)
         print(mode_options)
         while(True):
             mode_sel = input().lower().replace(" ", "")
             if (mode_sel == "q"):
-                return status
+                return
             if mode_sel in valid_modes:
                 status.model_mode = mode_sel
-                return status
+                return
             else:
-                print("\ninvalid command...")
+                print("invalid command...")
                 print(mode_options)
-    return status
 
 def run_func(function):
-    if function == "predict":
-        if model != None:
-            predict()
-        else:
-            print("Error: model == None, please train your model before predicting")
-    
-def clean_and_save(items):
-    df_non_void = data_mng.cleaned_data_df
+    if function == "update_clean_data":
+        update_clean_data()
 
-    # set data-selection mask - currently only selecting two-rivers products
-    get = ((df_non_void['Item'].str.contains('sandwich', case=False))
-    | (df_non_void['Item'].str.contains('bagel', case=False)) 
-    | (df_non_void['Item'].str.contains('wrap', case=False)))
+if __name__ == "__main__":
+    main()
 
-    # get desired data using mask
-    df = df_non_void[get]
-
-    list_days = df['Date'].unique()
-    num_days = list_days.shape[0]
-
-    list_items = df['Item'].unique()
-    num_items = list_items.shape[0]
-    print("Cleaning and exporting daily sales data for the following items...")
-    print(list_items)
-
-    # create new, faster, summarized dataset: row is day, column is item
-    raw_cleaned = np.zeros(num_days * num_items).reshape(num_days, num_items)
-    
-    for i in range(num_days):
-        for j in range(num_items):
-            sift = df[(df['Item'] == list_items[j]) & (df['Date'] == list_days[i])]
-            raw_cleaned[i, j] = sift.shape[0]
-
-    cleaned_df = pd.DataFrame(raw_cleaned, columns=list_items)
-    cleaned_df.insert(0, 'Date', list_days)
-    fname = Path("..", "data", "cleaned_day_item_array.csv")
-    cleaned_df.to_csv(fname)
-
-    assert(num_items != None)
-
-# helper; loads data into global vars from cleaned_day_item_array.csv
-def load_data():
-    fname = Path("..", "data", "cleaned_day_item_array.csv")
-    data_all = pd.read_csv(fname)
-    df_all = pd.DataFrame(data_all)
-    return df_all
-
-@handle('plot_data')
-def plot_data():
-    data = get_preprocessed_data('Bagel, Breakfast Meat', load_data())
-    X = data[:, 0:2]
-    plt.scatter(X[:, 0], X[:, 1])
-    plt.colorbar()
-    plt.show()
+################################## UNUSED BY MAIN/ UN-REFACTORED SO FAR (DO NOT DELETE UNTIL REFACTORED SOMEWHERE ELSE)
 
 # helper; slices df_all and returns learnable/clean data for item param
 # df_all must be initialized in order to call this
@@ -166,57 +119,6 @@ def get_preprocessed_data(item, df_all):
     ret = np.append(date_data, quantities, axis = 1)
     ret = ret.astype(np.int64)
     return ret
-
-# helper that runs cross validation (with specified number of folds) on a KNN model with each k in ks, returning
-#    an array cv_accs, where cv_accs[i] is the mean cross-validation error across all folds for ks[i]
-def test(X, y, ks, folds, err_type):
-
-    n = int(X.shape[0])
-    num_folds = folds
-
-    # this assertion ensures that your validation sets will always have at least one item in them
-    assert(num_folds <= n)
-
-    fold_size = int(n / num_folds)
-    leftovers = int(n % num_folds)
-
-    cv_accs = np.zeros(len(ks))
-    for k in ks:
-        # clear errors for this iteration
-        errors = np.empty(num_folds, dtype=float)
-        for i in range(num_folds):
-            # clear mask
-            mask = np.zeros(n, dtype=bool)
-
-            # set mask for this iteration
-            i_0 = (i * fold_size)
-            i_1 = ((i + 1) * fold_size)
-            # in case n is not evenly divisible by the number of fold we are doing,
-            #     append the leftover data to the end of the last validation set
-            if i == num_folds - 1:
-                i_1 = i_1 + leftovers
-            mask[i_0:i_1] = True
-
-            # get X_validate and X_train from X using mask
-            X_validate = X[mask, :]
-            y_validate = y[mask]
-            X_train = X[~mask, :]
-            y_train = y[~mask]
-
-            # train and validate on this fold, and store validation error in errors
-            model = KNN(k=k)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_validate)
-            err = np.abs(y_pred - y_validate)
-            if err_type == 'rel':
-                err = err / (y_validate + 1)
-            
-            err = np.mean(err)
-            errors[i] = err
-        
-        # store average error for k across the 10 folds
-        cv_accs[ks.index(k)] = np.mean(errors)
-    return cv_accs
 
 @handle("predict")
 def predict():
@@ -255,7 +157,7 @@ def predict():
 
 @handle('test_granular')
 def test_granular():
-    df_all = load_data()
+    df_all = status.data_mng.df_nv_clean
     list_items = df_all.columns[2:]
     num_items = list_items.shape[0]
 
@@ -403,7 +305,6 @@ def run_k_test(df_all):
         best_ks[i]= ks[np.argmin(cv_accs)]
     return best_ks
         
-
 @handle('find_best_ks')
 def find_ks():
     df_all = load_data()
@@ -456,6 +357,3 @@ def test_best_knn():
 
     print("Accuracies: ")
     print(accs)
-
-if __name__ == "__main__":
-    main()
