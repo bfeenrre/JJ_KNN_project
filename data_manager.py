@@ -37,9 +37,24 @@ class DataManager():
     # loads cleaned, augmented, daily sales by item df from csv
     #       requires that ../data/augmented_daily_sales_by_item.csv exists already. if it doesn't, you'll need to run 'update_clean_data' from the main menu to create it (unfortunately)
     def load_data(self):
-        fname = Path('..', 'data', 'augmented_daily_sales_by_item.csv')
-        df = pd.read_csv(fname)
+        if df == None:
+            fname = Path('..', 'data', 'augmented_daily_sales_by_item.csv')
+            df = pd.read_csv(fname)
 
+    def get_learnable_data(self, item, bootstrap=False, bootstrap_factor=1):
+        self.load_data()
+
+        X = self.df.loc[:, 0:4]
+        y = self.df[item]
+
+        n, d = X.shape
+
+        if bootstrap:
+            indicies = np.random.sample(range(0, n), n * bootstrap_factor)
+            return X[indicies], y[indicies]
+
+        return X, y
+            
     ## TODO: implement a function that allows me to create a bootstrapped dataset of any size from augmented_daily_sales_by_item, and OPTIONALLY export it to its own csv
 
 ############################################## helpers for public functions/classes

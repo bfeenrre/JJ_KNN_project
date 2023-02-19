@@ -3,8 +3,7 @@ Implementation of k-nearest neighbours classifier
 """
 
 import numpy as np
-
-from utils import euclidean_dist_squared
+from sklearn.metrics.pairwise import euclidean_dist_squared
 
 class NKNN:
     ensemble_size = None
@@ -24,8 +23,9 @@ class KNN:
         self.X = X  # just memorize the training data
         self.y = y
 
-    # uses cross validation to set self.best_k to whatever 
-    def find_best_k(self):
+    # uses 10x bootstrapped cross validation to set self.best_k to whatever 
+    # @TODO implement bootstrapping
+    def fit_best_k(self):
         # NOTE: this program will automatically do the HIGHEST possible number of cv folds while allowing each validation set to have at least min_items_per_fold examples
         # I set this hyper-hyper parameter to 20, as this 'feels' like a good number for this dataset, for lack of a better reason
         min_items_per_fold = 20
@@ -63,8 +63,8 @@ class KNN:
                 model = KNN(k=k)
                 model.fit(X_train, y_train)
                 y_pred = model.predict(X_validate)
-                err = np.abs(y_pred - y_validate)
-                
+                err = np.abs(y_pred - y_validate)/y_validate
+        
                 err = np.mean(err)
                 errors[i] = err
             
@@ -78,16 +78,15 @@ class KNN:
         
         dists = euclidean_dist_squared(self.X, X_hat)
         t = X_hat.shape[0]
+        n, d = self.X.shape
+        # sanity check
         assert(t == dists.shape[1])
-        pred = np.zeros(t).reshape((1, t))
+        assert(d == X_hat.shape[1])
+        pred = np.zeros(t)
         
         for x_hat in range(t):
             closest_neighbors = np.argsort(dists[:, x_hat])[:self.best_k]
             headcount = np.bincount(self.y[closest_neighbors])
-            pred[0, x_hat] = np.argmax(headcount)
+            pred[x_hat] = np.argmax(headcount)
 
         return pred
-            
-            
-
-            

@@ -9,7 +9,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from knn import KNN
 import time
 from data_manager import DataManager, update_clean_data
-from data_manager import food_items
+from data_manager import food_items, bakery_items, bottle_drink_items
 
 # make sure we're working in the directory this file lives in,
 # for imports and for simplicity with relative paths
@@ -40,7 +40,7 @@ class Status:
 
 # menu constants
 valid_commands = ["-o", "-q", "-t", "-m", "update_clean_data"]
-main_options = "options:\n    - '-q' does what you think it does\n    - '-t' timer on/off\n    - '-m' choose what type of model you want to use\n    - 'update_clean_data' load raw data from csv, clean it, use it to calculate summary of daily sales by item with augmented date data, and store summary as new, usable csv\n    - coming soon..."
+main_options = "options:\n    - '-q' does what you think it does\n    - '-t' timer on/off\n    - '-m' choose what type of model you want to use\n    - 'update_clean_data' load raw data from csv, clean it, use it to calculate summary of daily sales by item with augmented date data, and store summary as new, learnable csv\n    - coming soon..."
 mode_options = "options:\n    - 'knn' single knn model\n    - 'nknn' ensemble knn model\n    - 'r' return to main menu"
 
 # global status variable
@@ -97,28 +97,43 @@ def run_func(function):
 if __name__ == "__main__":
     main()
 
+
+
+################################## FEELING BOGGED DOWN BY MAIN IMPLEMENTATION STYLE - WANNA TRY SOME ENSEMBLE TESTING W/ BOOTSTRAPPING
+
+@handle("test_bagged__knn")
+def test_bagged_optimzed_knn():
+    update_clean_data()
+
+    data = DataManager()
+    data.load_data()
+
+    ensemble_size = 10
+    bootstrap_factor = 10
+    ks = range(0, 50)
+
+    items_to_test = bakery_items + food_items + bottle_drink_items
+    nitems = len(items_to_test)
+
+    for item in items_to_test:
+        X_train, y_train = data.get_learnable_data(item, True, bootstrap_factor * ensemble_size)
+        n, d = X_train.shape[0]
+        X_valid, y_valid = data.get_learnable_data(item, True, (bootstrap_factor / 2) * ensemble_size)
+        preds = np.zeros(ensemble_size, items_to_test)
+        
+        for i in range(ensemble_size):
+            X_t = X_train[(i * (n/ensemble_size)):((i+1) * (n/ensemble_size))]
+            y_t = y_train[0:(n/ensemble_size)]
+            X_v = 
+            model = KNN(ks).fit(X_t, y_t).find_best_k()
+            preds = model.predict(X_v)
+        ## @TODO quantitatively test mode vs median vs mean on this dataset
+    
+    print("printing predictions for ")
+
+
 ################################## UNUSED BY MAIN/ UN-REFACTORED SO FAR (DO NOT DELETE UNTIL REFACTORED SOMEWHERE ELSE)
 
-# helper; slices df_all and returns learnable/clean data for item param
-# df_all must be initialized in order to call this
-def get_preprocessed_data(item, df_all):
-    data = df_all.loc[:, ['Date', item]]
-    n = data.shape[0]
-    data_vec = np.array(data)
-    
-    weekday_arr = weekdays(data_vec[:, 0]).reshape(n, 1)/6
-    weekday_arr = weekday_arr * 3
-    month_arr = months(data_vec[:, 0]).reshape(n, 1)/12
-    month_arr = month_arr
-
-    quantities_obj = np.array(data_vec[:, 1])
-    quantities = np.round_(quantities_obj.astype(np.float32)).reshape(n, 1)
-
-    date_data = np.append(month_arr, weekday_arr, axis = 1)
-    
-    ret = np.append(date_data, quantities, axis = 1)
-    ret = ret.astype(np.int64)
-    return ret
 
 @handle("predict")
 def predict():
