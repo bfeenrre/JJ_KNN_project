@@ -50,20 +50,20 @@ def handle(number):
     return register
 
 
-def run(question):
-    if question not in _funcs:
-        raise ValueError(f"unknown question {question}")
-    return _funcs[question]()
+def run(task):
+    if task not in _funcs:
+        raise ValueError(f"unknown command {task}")
+    return _funcs[task]()
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("question", choices=sorted(_funcs.keys()) + ["all"])
+    parser.add_argument("task", choices=sorted(_funcs.keys()) + ["all"])
     args = parser.parse_args()
-    if args.question == "all":
-        for q in sorted(_funcs.keys()):
-            start = f"== {q} "
+    if (args.task == "all"):
+        for t in sorted(_funcs.keys()):
+            start = f"== {t} "
             print("\n" + start + "=" * (80 - len(start)))
-            run(q)
+            run(t)
     else:
-        return run(args.question)
+        return run(args.task)

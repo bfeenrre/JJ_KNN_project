@@ -3,7 +3,7 @@ import numpy as np
 
 # REQUIRES raw_dates is a single column dataframe with the column label 'Date' which contains date strings in an ISO format
 def get_augmented_date_a(raw_dates):
-    raw_dates['date_tuples'] = raw_dates['Date'].apply(date_utils.str_to_quadruple)
+    raw_dates['date_tuples'] = raw_dates['Date'].apply(str_to_quadruple)
     raw_dates['year'] = raw_dates['date_tuples'].map(lambda date : date[0])
     raw_dates['month'] = raw_dates['date_tuples'].map(lambda date : date[1])
     raw_dates['day_y'] = raw_dates['date_tuples'].map(lambda date : date[2])
@@ -20,4 +20,4 @@ def str_to_quadruple(str):
 
 def today():
     # generalize this later using datetime
-    return str_to_quadruple(date.today())
+    return np.asarray(str_to_quadruple(str(date.today()))).reshape(1, -1)
